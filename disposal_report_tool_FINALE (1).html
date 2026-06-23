@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Disposal Report — Final Report Generator</title>
+<!-- Use xlsx-js-style so cell styles (font size/name) are actually written to the output file -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+  :root {
+    --bg: #0d0f14; --surface: #161922; --border: #252a36;
+    --accent: #e8c547; --accent2: #4ecdc4; --danger: #ff6b6b;
+    --success: #6bcb77; --text: #e2e8f0; --muted: #64748b; --card: #1a1f2e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; overflow-x: hidden; }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 40px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+  .header-badge { background: var(--accent); color: #000; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 11px; letter-spacing: 2px; padding: 4px 10px; border-radius: 3px; }
+  .header h1 { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+  .header-ref { margin-left: auto; color: var(--muted); font-size: 11px; }
+
+  .main { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 65px); }
+
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 30px 20px; position: sticky; top: 65px; height: calc(100vh - 65px); overflow-y: auto; }
+  .sidebar-title { font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; margin-bottom: 20px; }
+  .step-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; margin-bottom: 4px; transition: all 0.15s; }
+  .step-item.done    .step-num { background: var(--success); color: #000; }
+  .step-item.running .step-num { background: var(--accent);  color: #000; }
+  .step-item.skip    .step-num { background: var(--muted);   color: #000; }
+  .step-num { width: 24px; height: 24px; border-radius: 4px; background: var(--border); color: var(--muted); font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
+  .step-label { font-size: 12px; color: var(--muted); line-height: 1.3; }
+  .step-item.done    .step-label { color: var(--success); }
+  .step-item.running .step-label { color: var(--accent); }
+
+  .content { padding: 40px; max-width: 900px; }
+  .upload-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 60px 40px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--card); position: relative; }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: rgba(232,197,71,0.05); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-icon { font-size: 48px; margin-bottom: 16px; }
+  .upload-zone h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .upload-zone p { color: var(--muted); font-size: 13px; }
+  .upload-zone.has-file { border-color: var(--success); border-style: solid; background: rgba(107,203,119,0.05); }
+  .file-info { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-top: 20px; }
+  .file-info .icon { font-size: 24px; }
+  .file-info .name { font-size: 13px; }
+  .file-info .size { font-size: 11px; color: var(--muted); }
+
+  .btn { padding: 12px 24px; border-radius: 6px; border: none; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 13px; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary   { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #f0d050; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-success   { background: var(--success); color: #000; }
+  .btn-success:hover { background: #7dd97c; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .section-desc  { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
+
+  .log-panel { background: #0a0c10; border: 1px solid var(--border); border-radius: 8px; padding: 20px; font-size: 12px; max-height: 350px; overflow-y: auto; display: none; margin-top: 20px; }
+  .log-panel.visible { display: block; }
+  .log-line { padding: 3px 0; line-height: 1.5; }
+  .log-info    { color: var(--accent2); }
+  .log-warn    { color: var(--accent); }
+  .log-error   { color: var(--danger); }
+  .log-success { color: var(--success); }
+  .log-step    { color: #a78bfa; font-weight: 500; }
+
+  .progress-wrap { background: var(--border); border-radius: 4px; height: 4px; margin: 20px 0; overflow: hidden; display: none; }
+  .progress-wrap.visible { display: block; }
+  .progress-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s ease; width: 0%; }
+
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px 0; }
+  .summary-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .summary-card .label { font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .summary-card .value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 700; }
+  .summary-card.green .value  { color: var(--success); }
+  .summary-card.yellow .value { color: var(--accent); }
+  .summary-card.red .value    { color: var(--danger); }
+
+  .steps-detail { display: none; margin-top: 24px; }
+  .steps-detail.visible { display: block; }
+  .step-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; display: flex; align-items: flex-start; gap: 14px; }
+  .step-card .icon { font-size: 20px; margin-top: 2px; }
+  .step-card .step-title  { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .step-card .step-detail { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .step-card.done { border-color: rgba(107,203,119,0.3); }
+  .step-card.skip { border-color: rgba(100,116,139,0.3); }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { width:16px; height:16px; border:2px solid rgba(0,0,0,0.3); border-top-color:#000; border-radius:50%; animation: spin .8s linear infinite; display:none; }
+  .processing .spinner { display:inline-block; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+  .fade-up { animation: fadeUp 0.3s ease forwards; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-badge">ENEL</div>
+  <h1>Disposal Report — Final Report Generator</h1>
+  <span class="header-ref">Ref. R273 · IT-AR.273-02 · v8</span>
+</div>
+
+<div class="main">
+  <aside class="sidebar">
+    <div class="sidebar-title">Elaborazione passi</div>
+    <div id="step-list"></div>
+  </aside>
+
+  <main class="content">
+    <div class="section fade-up">
+      <div class="section-title">Report Finale Disposals</div>
+      <div class="section-desc">
+        Carica il file Excel periodico già preparato (con colonne Note, Price, WFM, Riscatti, ecc.).
+        Il tool eseguirà automaticamente tutti i passi della sezione 4 per produrre il report finale da inviare a ENEL Asset Management.
+      </div>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".xlsx,.xls">
+        <div class="upload-icon">📂</div>
+        <h2>Carica il file Excel</h2>
+        <p>Trascina qui il file oppure clicca per selezionarlo<br><small style="opacity:0.6">Formato: .xlsx</small></p>
+      </div>
+      <div id="file-info-box" style="display:none" class="file-info">
+        <span class="icon">📊</span>
+        <div>
+          <div class="name" id="file-name"></div>
+          <div class="size" id="file-size"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="run-btn" disabled>
+        <span class="spinner"></span>
+        <span id="run-label">▶ Genera Report Finale</span>
+      </button>
+      <button class="btn btn-secondary" id="reset-btn"    style="display:none">↺ Ricomincia</button>
+      <button class="btn btn-success"   id="download-btn" style="display:none">⬇ Scarica Report Finale</button>
+    </div>
+
+    <div class="log-panel"    id="log-panel"></div>
+    <div class="steps-detail" id="steps-detail"></div>
+    <div id="summary-box"></div>
+  </main>
+</div>
+
+<script>
+const STEPS = [
+  { id:1,  label:"Colonna Cost gialla (N)" },
+  { id:2,  label:"Sostituzione con Loan Cost" },
+  { id:3,  label:"Rimozione righe Opex" },
+  { id:4,  label:"Applica value price → Cost" },
+  { id:5,  label:"WFM 0,50 → costo + data" },
+  { id:6,  label:"WFM Riscatti → 8,05 + data" },
+  { id:7,  label:"Rimozione colonne ausiliarie" },
+  { id:8,  label:"Numerazione righe (N°)" },
+  { id:9,  label:"Stile header + Calibri 8" },
+  { id:10, label:"Salvataggio file" },
+];
+
+let wb_result = null;
+let rawFile   = null;
+let stepStates = {};
+STEPS.forEach(s => stepStates[s.id] = 'pending');
+let checkedFileSession = null; // { name, mime, ts, buf:ArrayBuffer }
+
+// ── Disposal Amendments (from intermediate step) ─────────────────────────────
+const AMENDMENTS_STORAGE_KEY = 'disposal_amendments_v1';
+function safeStr(v){ return v===null || v===undefined ? '' : String(v).trim(); }
+function normAst(v){ return safeStr(v).toUpperCase().replace(/\s+/g,''); }
+function loadAmendments() {
+  try {
+    const raw = localStorage.getItem(AMENDMENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+    return items.map(x => ({
+      assetNumber: normAst(x.assetNumber),
+      amendmentId: safeStr(x.amendmentId),
+      customNote: safeStr(x.customNote),
+    })).filter(x => x.assetNumber);
+  } catch {
+    return [];
+  }
+}
+function ensureCol(row, idx, fill=null) {
+  while (row.length <= idx) row.push(fill);
+}
+function appendCellNote(rows, rowsRaw, r, notesCol, noteText) {
+  if (notesCol === null || notesCol === undefined) return;
+  ensureCol(rows[r], notesCol, '');
+  ensureCol(rowsRaw[r], notesCol, '');
+  const cur = safeStr(rows[r][notesCol]);
+  if (!cur) { rows[r][notesCol] = noteText; rowsRaw[r][notesCol] = noteText; return; }
+  if (cur.toLowerCase().includes(noteText.toLowerCase())) return;
+  const next = cur + ' | ' + noteText;
+  rows[r][notesCol] = next;
+  rowsRaw[r][notesCol] = next;
+}
+
+function renderSidebar() {
+  const icons = { pending:'·', running:'…', done:'✓', warn:'!', skip:'–', error:'✗' };
+  document.getElementById('step-list').innerHTML = STEPS.map(s => {
+    const st = stepStates[s.id];
+    return `<div class="step-item ${st}"><div class="step-num">${icons[st]||s.id}</div><div class="step-label">${s.label}</div></div>`;
+  }).join('');
+}
+renderSidebar();
+
+const logPanel = document.getElementById('log-panel');
+function log(msg, type='info') {
+  logPanel.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = `log-line log-${type}`;
+  d.textContent = `[${new Date().toLocaleTimeString('it-IT')}] ${msg}`;
+  logPanel.appendChild(d);
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+function setProgress(p) {
+  document.getElementById('progress-wrap').classList.add('visible');
+  document.getElementById('progress-bar').style.width = p + '%';
+}
+function setStep(id, st) { stepStates[id] = st; renderSidebar(); }
+
+// ── Upload ──────────────────────────────────────────────────────────────────
+const uploadZone = document.getElementById('upload-zone');
+document.getElementById('file-input').addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+function handleFile(f) {
+  rawFile = f;
+  uploadZone.classList.add('has-file');
+  document.getElementById('file-info-box').style.display = 'flex';
+  document.getElementById('file-name').textContent = f.name;
+  document.getElementById('file-size').textContent = (f.size/1024).toFixed(1)+' KB';
+  document.getElementById('run-btn').disabled = false;
+  log(`File caricato: ${f.name} (${(f.size/1024).toFixed(1)} KB)`, 'info');
+}
+
+function enableFromCheckedSession(file) {
+  checkedFileSession = file;
+  rawFile = { name: file.name, size: (file.buf?.byteLength || 0) }; // minimal metadata for filename in download
+  // Disable/hide upload UI: base file comes from Disposal Check
+  try { uploadZone.style.display = 'none'; } catch {}
+  document.getElementById('file-info-box').style.display = 'flex';
+  document.getElementById('file-name').textContent = file.name + ' (da Disposal Check)';
+  document.getElementById('file-size').textContent = ((file.buf?.byteLength || 0)/1024).toFixed(1)+' KB';
+  document.getElementById('run-btn').disabled = false;
+  log(`Base file caricato automaticamente dalla sessione: ${file.name}`, 'success');
+}
+
+// Auto-load base file from Disposal Check (same session, via merged container)
+function requestCheckedFile() {
+  try {
+    window.parent?.postMessage({ type: 'disposal:checkedFile:get' }, '*');
+  } catch {}
+}
+window.addEventListener('message', (ev) => {
+  const data = ev?.data;
+  if (!data || typeof data !== 'object') return;
+  if (data.type !== 'disposal:checkedFile:response') return;
+  if (!data.ok || !data.file || !(data.file.buf instanceof ArrayBuffer)) {
+    // No checked file in this session: require running Disposal Check first
+    document.getElementById('run-btn').disabled = true;
+    try { uploadZone.style.display = 'none'; } catch {}
+    log('ERRORE: nessun file "Disposal Checked" trovato in sessione. Completa prima lo step "Disposal Check".', 'error');
+    return;
+  }
+  enableFromCheckedSession({ name: data.file.name, mime: data.file.mime, ts: data.file.ts, buf: data.file.buf });
+});
+requestCheckedFile();
+
+function colLetter(n) {
+  let s=''; while(n>0){const r=(n-1)%26; s=String.fromCharCode(65+r)+s; n=Math.floor((n-1)/26);} return s;
+}
+
+function findColByHeader(ws, kw, hr=0) {
+  const rng = XLSX.utils.decode_range(ws['!ref']);
+  for (let c=rng.s.c; c<=rng.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({r:hr,c})];
+    if (cell && cell.v && String(cell.v).toLowerCase().includes(kw.toLowerCase())) return c;
+  }
+  return null;
+}
+
+// ── Main Processing ──────────────────────────────────────────────────────────
+document.getElementById('run-btn').addEventListener('click', () => {
+  if (!rawFile || (!checkedFileSession && !(rawFile instanceof File))) return;
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn').classList.add('processing');
+  document.getElementById('run-label').textContent = 'Elaborazione in corso…';
+  ['reset-btn','download-btn'].forEach(id => document.getElementById(id).style.display='none');
+  document.getElementById('steps-detail').innerHTML='';
+  document.getElementById('steps-detail').classList.remove('visible');
+  document.getElementById('summary-box').innerHTML='';
+  document.getElementById('log-panel').innerHTML='';
+  document.getElementById('log-panel').classList.remove('visible');
+  STEPS.forEach(s => stepStates[s.id]='pending');
+  renderSidebar();
+
+  const processArrayBuffer = (ab) => {
+    try {
+      const data = new Uint8Array(ab);
+      const wb   = XLSX.read(data, {type:'array', cellDates:true, cellStyles:true});
+      const sheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+
+      log(`Foglio: "${sheetName}" — ${rng.e.r+1} righe × ${rng.e.c+1} colonne`, 'info');
+
+      const stepResults = [];
+      const stats = { opexRemoved:0, loanSubstituted:0, valuePriceUpdated:0, wfm050:0, wfm805:0 };
+      setProgress(5);
+
+      // ── Detect columns ──────────────────────────────────────────────────
+      const HR = 0;
+      const findC = kw => findColByHeader(ws, kw, HR);
+
+      let costCol      = findC('cost');
+      let loanCol      = findC('loan');
+      let oldAssetCol  = findC('old asset');
+      let notesCol     = findC('note');
+      let wfmCol       = findC('smartphone wfm') ?? findC('wfm 0,50') ?? findC('wfm');
+      let priceCol     = findC('price');
+      let installedCol = findC('installed') ?? findC('installation');
+      let wfmRCol      = findC('riscatt');
+
+      log(`Cost:${costCol!=null?colLetter(costCol+1):'?'} Loan:${loanCol!=null?colLetter(loanCol+1):'?'} OldAsset:${oldAssetCol!=null?colLetter(oldAssetCol+1):'?'} Notes:${notesCol!=null?colLetter(notesCol+1):'?'} Price:${priceCol!=null?colLetter(priceCol+1):'?'} WFM:${wfmCol!=null?colLetter(wfmCol+1):'?'} Installed:${installedCol!=null?colLetter(installedCol+1):'?'} WFMRisc:${wfmRCol!=null?colLetter(wfmRCol+1):'?'}`, 'info');
+
+      let rows    = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:false});
+      let rowsRaw = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+
+      if (costCol === null) {
+        throw new Error('Colonna "Cost" non trovata nel file. Verificare le intestazioni.');
+      }
+
+      // Snapshot of the ORIGINAL Cost coming from the checked/source file.
+      // Requirement: for "no price" rows, Cost must stay as source column O (0-index 14),
+      // regardless of any later rule/amendment formatting.
+      const SOURCE_COST_COL_O = 14; // Excel column O
+      const SOURCE_NOTES_COL_R = 17; // Excel column R (Notes in source file)
+      const SOURCE_AST_COL_C = 2; // Excel column C (AST)
+      const getSourceCostRaw = (row) => (row && row.length > SOURCE_COST_COL_O)
+        ? row[SOURCE_COST_COL_O]
+        : row?.[costCol];
+      const getSourceCostTxt = (row) => (row && row.length > SOURCE_COST_COL_O)
+        ? row[SOURCE_COST_COL_O]
+        : row?.[costCol];
+
+      let sourceCostRaw = rowsRaw.map((row, idx) => (idx === 0 ? null : getSourceCostRaw(row)));
+      let sourceCostTxt = rows.map((row, idx) => (idx === 0 ? null : getSourceCostTxt(row)));
+
+      // Universal rule (audit-proof): if SOURCE Notes (col R) contains "no price" anywhere,
+      // then final Cost must always be the SOURCE Cost from col O for that AST.
+      const noPriceByAst = {};
+      for (let r=1; r<rowsRaw.length; r++) {
+        const ast = normAst(rowsRaw[r]?.[SOURCE_AST_COL_C]);
+        if (!ast) continue;
+        const noteSrc = String(rowsRaw[r]?.[SOURCE_NOTES_COL_R] ?? rows[r]?.[SOURCE_NOTES_COL_R] ?? '').toLowerCase();
+        if (!noteSrc.includes('no price')) continue;
+        noPriceByAst[ast] = {
+          raw: getSourceCostRaw(rowsRaw[r]),
+          txt: getSourceCostTxt(rows[r])
+        };
+      }
+
+      // ── Apply Disposal Amendments (before Step 1) ───────────────────────
+      const amendments = loadAmendments();
+      if (amendments.length) {
+        const AST_COL = 2; // colonna C
+        const FALLBACK_NOTES_COL = 17; // colonna R (0-index)
+        const FALLBACK_INST_COL  = 3;  // colonna D (0-index)
+
+        const notesColEff = notesCol ?? FALLBACK_NOTES_COL;
+        const instColEff  = installedCol ?? FALLBACK_INST_COL;
+
+        // Build quick lookup asset -> amendment (last one wins)
+        const byAst = {};
+        amendments.forEach(a => { byAst[a.assetNumber] = a; });
+
+        // First pass: delete rows marked as opex_delete
+        const beforeDel = rows.length;
+        const keepFn = (row, idx) => {
+          if (idx === 0) return true;
+          const ast = normAst(row[AST_COL]);
+          const am  = byAst[ast];
+          return !(am && am.amendmentId === 'opex_delete');
+        };
+        sourceCostRaw = sourceCostRaw.filter((_, idx) => keepFn(rows[idx], idx));
+        sourceCostTxt = sourceCostTxt.filter((_, idx) => keepFn(rows[idx], idx));
+        rows = rows.filter(keepFn);
+        rowsRaw = rowsRaw.filter(keepFn);
+        const deleted = beforeDel - rows.length;
+
+        // Second pass: apply in-place updates
+        let notesApplied = 0, costApplied = 0;
+        for (let r=1; r<rows.length; r++) {
+          const ast = normAst(rows[r][AST_COL]);
+          const am  = byAst[ast];
+          if (!am) continue;
+
+          if (am.amendmentId === 'note_no_price') {
+            appendCellNote(rows, rowsRaw, r, notesColEff, 'no price'); notesApplied++;
+          } else if (am.amendmentId === 'note_value_price') {
+            appendCellNote(rows, rowsRaw, r, notesColEff, 'value price'); notesApplied++;
+          } else if (am.amendmentId === 'note_custom') {
+            if (am.customNote) { appendCellNote(rows, rowsRaw, r, notesColEff, am.customNote); notesApplied++; }
+          } else if (am.amendmentId === 'chg_050') {
+            // Cost = 0.50; Install Date = 31/03/2019
+            rowsRaw[r][costCol] = 0.50;
+            rows[r][costCol] = '0.50';
+            ensureCol(rows[r], instColEff, '');
+            ensureCol(rowsRaw[r], instColEff, '');
+            rows[r][instColEff] = '31/03/2019';
+            rowsRaw[r][instColEff] = '31/03/2019';
+            costApplied++;
+          } else if (am.amendmentId === 'chg_805') {
+            // Cost = 8.05; Install Date = 01/08/2025
+            rowsRaw[r][costCol] = 8.05;
+            rows[r][costCol] = '8.05';
+            ensureCol(rows[r], instColEff, '');
+            ensureCol(rowsRaw[r], instColEff, '');
+            rows[r][instColEff] = '01/08/2025';
+            rowsRaw[r][instColEff] = '01/08/2025';
+            costApplied++;
+          }
+        }
+
+        log(`Disposal Amendments: ${amendments.length} richieste → ${deleted} righe eliminate, ${notesApplied} note applicate, ${costApplied} update cost/data`, 'success');
+      } else {
+        log('Disposal Amendments: nessuna amendment trovata (salta)', 'info');
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 1 — Insert yellow Cost column (duplicate of Cost) before Cost
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 1: Colonna Cost gialla ──', 'step');
+      setStep(1,'running'); setProgress(12);
+
+      rows.forEach(r    => r.splice(costCol, 0, null));
+      rowsRaw.forEach(r => r.splice(costCol, 0, null));
+
+      const yellowCol   = costCol;
+      const origCostCol = costCol + 1;
+
+      // Shift all column indices that were >= costCol (they shifted right by 1)
+      const sh = c => (c!==null && c>=costCol) ? c+1 : c;
+      loanCol=sh(loanCol); oldAssetCol=sh(oldAssetCol); notesCol=sh(notesCol);
+      wfmCol=sh(wfmCol); priceCol=sh(priceCol); installedCol=sh(installedCol); wfmRCol=sh(wfmRCol);
+
+      rows[0][yellowCol]='Cost'; rowsRaw[0][yellowCol]='Cost';
+      for (let r=1; r<rows.length; r++) {
+        rows[r][yellowCol]    = sourceCostTxt[r];
+        rowsRaw[r][yellowCol] = sourceCostRaw[r];
+      }
+
+      log(`Inserita in col ${colLetter(yellowCol+1)} (Cost orig → ${colLetter(origCostCol+1)})`, 'success');
+      setStep(1,'done');
+      stepResults.push({id:1, status:'done', detail:`Colonna gialla in ${colLetter(yellowCol+1)}, originale in ${colLetter(origCostCol+1)}`});
+      setProgress(22);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 2 — Substitute yellow Cost with Loan Cost where Old Asset ID present
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 2: Sostituzione con Loan Cost ──', 'step');
+      setStep(2,'running');
+
+      if (oldAssetCol!==null && loanCol!==null) {
+        for (let r=1; r<rowsRaw.length; r++) {
+          const v    = rowsRaw[r][oldAssetCol];
+          const note = notesCol!==null ? String(rows[r][notesCol]||'').toLowerCase() : '';
+          if (note.includes('no price')) continue; // ← protegge "no price"
+          if (v!==null && v!==undefined && String(v).trim()!=='' && String(v).trim()!=='0') {
+            rowsRaw[r][yellowCol] = rowsRaw[r][loanCol];
+            rows[r][yellowCol]    = rows[r][loanCol];
+            stats.loanSubstituted++;
+          }
+        }
+        log(`${stats.loanSubstituted} righe → Loan Cost`, 'success');
+        setStep(2,'done');
+        stepResults.push({id:2, status:'done', detail:`${stats.loanSubstituted} righe aggiornate`});
+      } else {
+        log('Old Asset ID o Loan Cost non trovate — salto', 'warn');
+        setStep(2,'skip');
+        stepResults.push({id:2, status:'skip', detail:'Colonne non trovate'});
+      }
+      setProgress(32);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 3 — Remove rows with Notes = "Opex to be eliminated"
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 3: Rimozione righe Opex ──', 'step');
+      setStep(3,'running'); setProgress(40);
+
+      if (notesCol!==null) {
+        const before = rows.length;
+        const keepFn = (row, idx) => {
+          if (idx===0) return true;
+          const n = row[notesCol];
+          return !n || !String(n).toLowerCase().includes('opex to be eliminated');
+        };
+        rows    = rows.filter(keepFn);
+        rowsRaw = rowsRaw.filter(keepFn);
+        stats.opexRemoved = before - rows.length;
+        log(`${stats.opexRemoved} righe rimosse`, 'success');
+        setStep(3,'done');
+        stepResults.push({id:3, status:'done', detail:`${stats.opexRemoved} righe eliminate`});
+      } else {
+        log('Colonna Notes non trovata — salto', 'warn');
+        setStep(3,'skip');
+        stepResults.push({id:3, status:'skip', detail:'Colonna Notes non trovata'});
+      }
+      setProgress(48);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 4 — "value price" in Notes → copy Price column → yellow Cost
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 4: Applica value price ──', 'step');
+      setStep(4,'running'); setProgress(55);
+
+      if (notesCol!==null && priceCol!==null) {
+        for (let r=1; r<rowsRaw.length; r++) {
+          const n = rows[r][notesCol];
+          if (!n) continue;
+          const nStr = String(n).toLowerCase();
+          if (nStr.includes('no price')) continue; // ← protegge "no price"
+          if (nStr.includes('value price')) {
+            const pv = rowsRaw[r][priceCol];
+            if (pv!==null && pv!==undefined && pv!=='') {
+              rowsRaw[r][yellowCol] = pv;
+              rows[r][yellowCol]    = rows[r][priceCol];
+              stats.valuePriceUpdated++;
+            }
+          }
+        }
+        log(`${stats.valuePriceUpdated} righe aggiornate con Price`, 'success');
+        setStep(4,'done');
+        stepResults.push({id:4, status:'done', detail:`${stats.valuePriceUpdated} righe aggiornate`});
+      } else {
+        log('Notes o Price non trovate — salto', 'warn');
+        setStep(4,'skip');
+        stepResults.push({id:4, status:'skip', detail:'Colonne non trovate'});
+      }
+      setProgress(62);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 5 — WFM col S: AST present + Notes has "0,50" OR wfm col has "0,50"
+      //          → Cost = 0.50, InstallDate = 31/03/2019
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 5: WFM Smartphone 0,50 ──', 'step');
+      setStep(5,'running'); setProgress(68);
+
+      if (wfmCol!==null) {
+        for (let r=1; r<rows.length; r++) {
+          const wfmVal  = rows[r][wfmCol];
+          const noteVal = notesCol!==null ? String(rows[r][notesCol]||'') : '';
+          if (noteVal.toLowerCase().includes('no price')) continue; // ← protegge "no price"
+          // Match: wfm cell has AST number (non-empty) AND note says "0,50" OR wfm cell itself has "0,50"
+          const wfmStr = String(wfmVal||'');
+          const match  = (wfmVal!==null && wfmVal!==undefined && wfmVal!=='')
+                      && (noteVal.includes('0,50') || noteVal.includes('0.50') ||
+                          wfmStr.includes('0,50') || wfmStr.toLowerCase().includes('change to 0,50'));
+          if (match) {
+            rowsRaw[r][yellowCol] = 0.50;
+            rows[r][yellowCol]    = '0.50';
+            if (installedCol!==null) { rows[r][installedCol]='31/03/2019'; rowsRaw[r][installedCol]='31/03/2019'; }
+            stats.wfm050++;
+          }
+        }
+        log(`${stats.wfm050} righe → 0.50€ / 31/03/2019`, 'success');
+        setStep(5,'done');
+        stepResults.push({id:5, status:'done', detail:`${stats.wfm050} righe aggiornate`});
+      } else {
+        log('Colonna WFM non trovata — salto', 'warn');
+        setStep(5,'skip');
+        stepResults.push({id:5, status:'skip', detail:'Colonna non trovata'});
+      }
+      setProgress(73);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 6 — WFM Riscatti col W/X: AST present + Notes has "8,05"
+      //          → Cost = 8.05, InstallDate = 01/08/2025
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 6: WFM Riscatti 8,05 ──', 'step');
+      setStep(6,'running'); setProgress(78);
+
+      if (wfmRCol!==null) {
+        for (let r=1; r<rows.length; r++) {
+          const rVal    = rows[r][wfmRCol];
+          const noteVal = notesCol!==null ? String(rows[r][notesCol]||'') : '';
+          if (noteVal.toLowerCase().includes('no price')) continue; // ← protegge "no price"
+          const rStr    = String(rVal||'');
+          const match   = (rVal!==null && rVal!==undefined && rVal!=='')
+                       && (noteVal.includes('8,05') || noteVal.includes('8.05') ||
+                           rStr.includes('8,05') || rStr.toLowerCase().includes('change to 8,05'));
+          if (match) {
+            rowsRaw[r][yellowCol] = 8.05;
+            rows[r][yellowCol]    = '8.05';
+            if (installedCol!==null) { rows[r][installedCol]='01/08/2025'; rowsRaw[r][installedCol]='01/08/2025'; }
+            stats.wfm805++;
+          }
+        }
+        log(`${stats.wfm805} righe → 8.05€ / 01/08/2025`, 'success');
+        setStep(6,'done');
+        stepResults.push({id:6, status:'done', detail:`${stats.wfm805} righe aggiornate`});
+      } else {
+        log('Colonna WFM Riscatti non trovata — salto', 'warn');
+        setStep(6,'skip');
+        stepResults.push({id:6, status:'skip', detail:'Colonna non trovata'});
+      }
+      setProgress(82);
+
+      // Safety: "no price" must leave Cost unchanged (keep source value).
+      // Restore the yellow Cost from the original Cost column for those rows,
+      // even if other rules or formatting would otherwise alter/blank it.
+      if (notesCol!==null) {
+        for (let r=1; r<rows.length; r++) {
+          const noteVal = String(rows[r][notesCol] || '').toLowerCase();
+          if (!noteVal.includes('no price')) continue;
+          rowsRaw[r][yellowCol] = sourceCostRaw[r];
+          rows[r][yellowCol]    = sourceCostTxt[r];
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 7 — Delete ALL columns after yellow Cost col
+      //          (Loan Cost, orig Cost, Expenditure, Notes, Price,
+      //           Verifica 2018, Verifica 2019, WFM, WFM Riscatti)
+      //          The report must end at col O (= yellowCol, 0-indexed)
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 7: Rimozione colonne ausiliarie ──', 'step');
+      setStep(7,'running'); setProgress(86);
+
+      const delFrom  = yellowCol + 1;
+      const toRemove = rows[0].length - delFrom;
+
+      if (toRemove > 0) {
+        rows.forEach(row    => row.splice(delFrom, toRemove));
+        rowsRaw.forEach(row => row.splice(delFrom, toRemove));
+        log(`${toRemove} colonne rimosse. Report: A→${colLetter(rows[0].length)} (${rows[0].length} col)`, 'success');
+        setStep(7,'done');
+        stepResults.push({id:7, status:'done', detail:`${toRemove} colonne rimosse. Ultima col: ${colLetter(rows[0].length)}`});
+      } else {
+        log('Nessuna colonna extra trovata dopo Cost', 'warn');
+        setStep(7,'skip');
+        stepResults.push({id:7, status:'skip', detail:'Nessuna colonna extra'});
+      }
+      setProgress(90);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 8 — Insert N° column at position 0
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 8: Inserimento colonna N° ──', 'step');
+      setStep(8,'running');
+
+      rows.forEach((row,i)    => row.unshift(i===0 ? 'N°' : i));
+      rowsRaw.forEach((row,i) => row.unshift(i===0 ? 'N°' : i));
+
+      const finalYellowCol = yellowCol + 1; // shifted +1 by the N° prepend
+
+      // FINAL GUARANTEE (must run last): enforce "no price" rule unconditionally.
+      // We key by AST so deletions/reordering won't break the mapping.
+      const astColAfterCostInsert = SOURCE_AST_COL_C + (SOURCE_AST_COL_C >= costCol ? 1 : 0);
+      const finalAstCol = astColAfterCostInsert + 1; // shifted +1 by the N° prepend
+      let noPriceEnforced = 0;
+      for (let r=1; r<rowsRaw.length; r++) {
+        const ast = normAst(rowsRaw[r]?.[finalAstCol]);
+        if (!ast) continue;
+        const np = noPriceByAst[ast];
+        if (!np) continue;
+        if (np.raw !== undefined) rowsRaw[r][finalYellowCol] = np.raw;
+        if (np.txt !== undefined) rows[r][finalYellowCol] = np.txt;
+        noPriceEnforced++;
+      }
+      if (noPriceEnforced) log(`"no price": Cost preservato da col O per ${noPriceEnforced} righe (override finale)`, 'success');
+
+      // Rename header columns (row 1) to the required labels (in order)
+      const HEADER_LABELS = [
+        'N. Riga',
+        'Matricola ENEL',
+        'Numero di serie',
+        'Asset ID',
+        'Data Installazione',
+        'Stato secondario',
+        'Motivo Dismissione',
+        'Documento Dismissione',
+        'Categoria del modello',
+        'Elemento di configurazione',
+        'Nome visualizzato',
+        'Data Dismissione Sistema',
+        'Cliente Contabile',
+        'Data Documento',
+        'COSTO'
+      ];
+      for (let c=0; c<Math.min(HEADER_LABELS.length, rowsRaw[0].length); c++) {
+        rowsRaw[0][c] = HEADER_LABELS[c];
+        rows[0][c] = HEADER_LABELS[c];
+      }
+
+      log(`N° inserito. ${rows.length-1} righe dati. Ultima col: ${colLetter(rows[0].length)}`, 'success');
+      setStep(8,'done');
+      stepResults.push({id:8, status:'done', detail:`${rows.length-1} righe numerate`});
+      setProgress(94);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 9 — Build workbook with full styles:
+      //   - Header row 0: background #C0392B (dark orange-red), white bold Calibri 8
+      //   - Cost column: yellow background
+      //   - All cells: Calibri 8
+      // ═══════════════════════════════════════════════════════════════════
+      log('── Passo 9: Stili (header arancione, Calibri 8, Cost giallo) ──', 'step');
+      setStep(9,'running');
+
+      const newWb = XLSX.utils.book_new();
+      const newWs = XLSX.utils.aoa_to_sheet(rowsRaw);
+      const newRng = XLSX.utils.decode_range(newWs['!ref']);
+
+      // Header styling (spec):
+      // - Bold Calibri 8 for entire header row
+      // - ONLY A1 has yellow fill
+      // - All other header cells have no fill
+      const FILL_YELLOW = { patternType:'solid', fgColor:{ rgb:'FFFFFF00' } };
+      const FILL_NONE   = { patternType:'none' };
+      const BORDER_STD  = { top:{style:'thin',color:{rgb:'FF888888'}}, bottom:{style:'thin',color:{rgb:'FF888888'}}, left:{style:'thin',color:{rgb:'FF888888'}}, right:{style:'thin',color:{rgb:'FF888888'}} };
+
+      for (let r=newRng.s.r; r<=newRng.e.r; r++) {
+        for (let c=newRng.s.c; c<=newRng.e.c; c++) {
+          const addr = XLSX.utils.encode_cell({r,c});
+          if (!newWs[addr]) newWs[addr] = { v:'', t:'s' };
+          if (r===0) {
+            const isA1 = (c === 0);
+            newWs[addr].s = {
+              font:      { name:'Calibri', sz:8, bold:true },
+              fill:      isA1 ? FILL_YELLOW : FILL_NONE,
+              alignment: { horizontal:'center', vertical:'center', wrapText:true },
+              border:    BORDER_STD
+            };
+          } else if (c===finalYellowCol) {
+            newWs[addr].s = {
+              font:      { name:'Calibri', sz:8 },
+              // COSTO column must have NO fill (override any previous styling)
+              fill:      FILL_NONE,
+              alignment: { vertical:'center' },
+              border:    BORDER_STD,
+              numFmt:    '#,##0.00 [$€-410]'
+            };
+            // Apply number format code so Excel renders as currency
+            if (r > 0 && newWs[addr].v !== '' && newWs[addr].v !== null && newWs[addr].v !== undefined) {
+              const numVal = parseFloat(String(newWs[addr].v).replace(',','.'));
+              if (!isNaN(numVal)) {
+                newWs[addr].t = 'n';
+                newWs[addr].v = numVal;
+                newWs[addr].z = '#,##0.00 [$€-410]';
+              }
+              // se non è numerico (es. testo) lascia il valore invariato — non azzerare
+            }
+          } else {
+            newWs[addr].s = {
+              font:      { name:'Calibri', sz:8 },
+              fill:      FILL_NONE,
+              alignment: { vertical:'center' },
+              border:    BORDER_STD
+            };
+          }
+        }
+      }
+
+      // Hard override: ensure COSTO column has NO background fill for all cells (including header).
+      for (let r=newRng.s.r; r<=newRng.e.r; r++) {
+        const addr = XLSX.utils.encode_cell({ r, c: finalYellowCol });
+        if (!newWs[addr]) newWs[addr] = { v:'', t:'s' };
+        if (!newWs[addr].s) newWs[addr].s = {};
+        newWs[addr].s.fill = FILL_NONE;
+      }
+
+      // Hard guarantee: force Calibri 8 on every cell in the sheet,
+      // including any pre-existing cells created by aoa_to_sheet.
+      // Preserve other style props (bold, colors, fills, numFmt, etc.).
+      for (const k of Object.keys(newWs)) {
+        if (k[0] === '!') continue;
+        const cell = newWs[k];
+        if (!cell) continue;
+        if (!cell.s) cell.s = {};
+        if (!cell.s.font) cell.s.font = {};
+        cell.s.font.name = 'Calibri';
+        cell.s.font.sz = 8;
+      }
+
+      // Row heights
+      if (!newWs['!rows']) newWs['!rows'] = [];
+      newWs['!rows'][0] = { hpt:28 };
+      for (let r=1; r<=newRng.e.r; r++) newWs['!rows'][r] = { hpt:14 };
+
+      // Column widths
+      newWs['!cols'] = rows[0].map((_,i) => ({ wch: i===0 ? 5 : 20 }));
+
+      XLSX.utils.book_append_sheet(newWb, newWs, sheetName);
+      wb_result = newWb;
+
+      log('Stili applicati correttamente', 'success');
+      setStep(9,'done');
+      stepResults.push({id:9, status:'done', detail:'Header arancione+bianco, corpo Calibri 8, Cost giallo'});
+      setProgress(98);
+
+      // ═══════════════════════════════════════════════════════════════════
+      // STEP 10 — Done
+      // ═══════════════════════════════════════════════════════════════════
+      setStep(10,'done');
+      stepResults.push({id:10, status:'done', detail:'File pronto per il download'});
+      setProgress(100);
+
+      showSummary(stats, stepResults, rows.length-1);
+      document.getElementById('run-btn').classList.remove('processing');
+      document.getElementById('run-label').textContent = '✓ Completato';
+      document.getElementById('reset-btn').style.display   = 'inline-flex';
+      document.getElementById('download-btn').style.display = 'inline-flex';
+
+    } catch (err) {
+      log('ERRORE CRITICO: ' + err.message, 'error');
+      console.error(err);
+      document.getElementById('run-btn').disabled = false;
+      document.getElementById('run-btn').classList.remove('processing');
+      document.getElementById('run-label').textContent = '▶ Genera Report Finale';
+    }
+  };
+
+  // Prefer the checked file from session (no upload required)
+  if (checkedFileSession?.buf instanceof ArrayBuffer) {
+    processArrayBuffer(checkedFileSession.buf);
+    return;
+  }
+
+  // Fallback: manual upload (kept for compatibility)
+  const reader = new FileReader();
+  reader.onload = (e) => processArrayBuffer(e.target.result);
+  reader.readAsArrayBuffer(rawFile);
+});
+
+function showSummary(stats, stepResults, dataRows) {
+  const skipped  = stepResults.filter(s=>s.status==='skip').length;
+  const doneCount = stepResults.filter(s=>s.status==='done').length;
+  document.getElementById('summary-box').innerHTML = `
+    <hr class="divider">
+    <div class="section-title fade-up">Riepilogo</div>
+    <div class="summary-grid fade-up">
+      <div class="summary-card green"><div class="label">Righe nel report</div><div class="value">${dataRows}</div></div>
+      <div class="summary-card yellow"><div class="label">Passi completati</div><div class="value">${doneCount}/${STEPS.length}</div></div>
+      <div class="summary-card ${skipped>0?'yellow':'green'}"><div class="label">Passi saltati</div><div class="value">${skipped}</div></div>
+    </div>
+    <div class="summary-grid fade-up">
+      <div class="summary-card green"><div class="label">Loan Cost sostituiti</div><div class="value">${stats.loanSubstituted}</div></div>
+      <div class="summary-card red"><div class="label">Righe Opex rimosse</div><div class="value">${stats.opexRemoved}</div></div>
+      <div class="summary-card yellow"><div class="label">Value Price applicati</div><div class="value">${stats.valuePriceUpdated}</div></div>
+    </div>`;
+  const det = document.getElementById('steps-detail');
+  det.innerHTML = '<div class="section-title" style="margin-bottom:16px">Dettaglio passi</div>' +
+    stepResults.map(s=>`<div class="step-card ${s.status} fade-up">
+      <span class="icon">${s.status==='done'?'✅':s.status==='skip'?'⏭':'⚠️'}</span>
+      <div><div class="step-title">${STEPS.find(x=>x.id===s.id)?.label}</div><div class="step-detail">${s.detail}</div></div>
+    </div>`).join('');
+  det.classList.add('visible');
+}
+
+document.getElementById('download-btn').addEventListener('click', () => {
+  if (!wb_result) return;
+  const now = new Date(), pad = n=>String(n).padStart(2,'0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`;
+  const base  = rawFile ? rawFile.name.replace(/\.xlsx?$/i,'') : 'disposal';
+
+  // VERY LAST OPERATION BEFORE SAVE:
+  // Force Calibri size 8 on every single cell in every sheet.
+  try {
+    for (const sName of (wb_result.SheetNames || [])) {
+      const ws = wb_result.Sheets?.[sName];
+      if (!ws) continue;
+      // Determine last column index from !ref so we can also hard-override COSTO fill.
+      const ref = ws['!ref'];
+      const rng = ref ? XLSX.utils.decode_range(ref) : null;
+      const lastCol = rng ? rng.e.c : null;
+      for (const k of Object.keys(ws)) {
+        if (k[0] === '!') continue;
+        const cell = ws[k];
+        if (!cell) continue;
+        if (!cell.s) cell.s = {};
+        if (!cell.s.font) cell.s.font = {};
+        cell.s.font.name = 'Calibri';
+        cell.s.font.sz = 8;
+      }
+      // COSTO column (last column) must have NO fill for all rows, including header.
+      if (rng && lastCol !== null) {
+        for (let r=rng.s.r; r<=rng.e.r; r++) {
+          const addr = XLSX.utils.encode_cell({ r, c: lastCol });
+          if (!ws[addr]) ws[addr] = { v:'', t:'s' };
+          if (!ws[addr].s) ws[addr].s = {};
+          ws[addr].s.fill = { patternType:'none' };
+        }
+      }
+    }
+  } catch (e) {
+    // If styles can't be applied (library limitation), still proceed with download.
+    console.warn('Font enforcement failed:', e);
+  }
+
+  // Ensure writer is allowed to include styles.
+  XLSX.writeFile(wb_result, `${base}_FINAL_${stamp}.xlsx`, { bookType:'xlsx', cellStyles:true });
+  log(`Download: ${base}_FINAL_${stamp}.xlsx`, 'success');
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  wb_result=null;
+  // keep checkedFileSession (session handoff) so user can re-run without re-upload
+  document.getElementById('file-input').value='';
+  uploadZone.classList.remove('has-file');
+  if (checkedFileSession) {
+    document.getElementById('file-info-box').style.display='flex';
+    document.getElementById('run-btn').disabled=false;
+  } else {
+    rawFile=null;
+    document.getElementById('file-info-box').style.display='none';
+    document.getElementById('run-btn').disabled=true;
+    try { uploadZone.style.display=''; } catch {}
+  }
+  document.getElementById('run-btn').classList.remove('processing');
+  document.getElementById('run-label').textContent='▶ Genera Report Finale';
+  ['reset-btn','download-btn'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('log-panel').innerHTML='';
+  document.getElementById('log-panel').classList.remove('visible');
+  document.getElementById('progress-wrap').classList.remove('visible');
+  document.getElementById('progress-bar').style.width='0%';
+  document.getElementById('steps-detail').innerHTML='';
+  document.getElementById('steps-detail').classList.remove('visible');
+  document.getElementById('summary-box').innerHTML='';
+  STEPS.forEach(s=>stepStates[s.id]='pending');
+  renderSidebar();
+});
+</script>
+</body>
+</html>

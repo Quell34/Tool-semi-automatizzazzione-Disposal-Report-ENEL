@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Disposal Amendments</title>
+  <style>
+    :root{
+      --bg:#0d0f14; --surface:#161922; --border:#252a36;
+      --accent:#e8c547; --accent2:#4ecdc4; --danger:#ff6b6b;
+      --success:#6bcb77; --text:#e2e8f0; --muted:#94a3b8; --card:#1a1f2e;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh}
+    .wrap{max-width:980px;margin:0 auto;padding:28px 24px 40px}
+    .header{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
+    .badge{background:var(--accent);color:#000;font-weight:800;font-size:11px;letter-spacing:2px;padding:4px 10px;border-radius:4px;white-space:nowrap}
+    h1{font-size:18px;font-weight:750;letter-spacing:.2px;margin-top:1px}
+    .sub{color:var(--muted);font-size:12.5px;line-height:1.55;margin-top:6px}
+    .grid{display:grid;grid-template-columns:1.4fr .6fr;gap:16px;align-items:start}
+    @media (max-width: 860px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .card-title{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+    .row{display:grid;grid-template-columns:1.1fr 1.3fr .6fr;gap:10px;margin-bottom:10px}
+    @media (max-width: 860px){.row{grid-template-columns:1fr}}
+    input, select, textarea{
+      width:100%;
+      background:#0a0c10;
+      border:1px solid var(--border);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:10px;
+      font-size:13px;
+      outline:none;
+    }
+    textarea{min-height:84px;resize:vertical}
+    input:focus, select:focus, textarea:focus{border-color: rgba(232,197,71,.75)}
+    .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .btn{
+      border:1px solid var(--border);
+      background: #0a0c10;
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:10px;
+      cursor:pointer;
+      font-size:12.5px;
+      transition: transform .06s ease, border-color .15s ease, background .15s ease, opacity .15s ease;
+      user-select:none;
+    }
+    .btn:hover{border-color: rgba(232,197,71,.55)}
+    .btn:active{transform: translateY(1px)}
+    .btn.primary{background: rgba(232,197,71,.15); border-color: rgba(232,197,71,.35)}
+    .btn.primary:hover{border-color: rgba(232,197,71,.75)}
+    .btn.danger{background: rgba(255,107,107,.10); border-color: rgba(255,107,107,.35)}
+    .btn.danger:hover{border-color: rgba(255,107,107,.75)}
+    .btn.success{background: rgba(107,203,119,.12); border-color: rgba(107,203,119,.35)}
+    .btn.success:hover{border-color: rgba(107,203,119,.75)}
+    .muted{color:var(--muted);font-size:12px;line-height:1.45}
+    .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:#0a0c10;border-radius:999px;padding:8px 12px;font-size:12px;color:var(--muted)}
+    .pill strong{color:var(--text)}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .item{border:1px solid var(--border);border-radius:12px;background:#0a0c10;padding:12px}
+    .item-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .asset{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;font-size:12.5px}
+    .warn{color:var(--danger);font-size:12px;margin-top:8px}
+    .ok{color:var(--success);font-size:12px;margin-top:8px}
+    .hr{border:0;border-top:1px solid var(--border);margin:14px 0}
+    code{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;font-size: 12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <div class="badge">ENEL</div>
+      <div>
+        <h1>Disposal Amendments</h1>
+        <div class="sub">
+          Inserisci una o più coppie <strong>Asset Number → Amendment</strong>. Le modifiche vengono salvate e verranno applicate automaticamente quando generi il <strong>Disposal Final</strong>.
+          Matching righe: colonna <strong>C</strong> (AST Number). Notes: colonna <strong>R</strong>. Install Date: colonna <strong>D</strong>.
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">Aggiungi / modifica amendments</div>
+
+        <div id="rows"></div>
+
+        <div class="btns">
+          <button class="btn primary" id="add-row" type="button">+ Aggiungi riga</button>
+          <button class="btn" id="save" type="button">Salva amendments</button>
+          <button class="btn danger" id="clear" type="button">Svuota tutto</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="btns">
+          <button class="btn success" id="confirm-go-final" type="button">Conferma e vai a “Disposal Final”</button>
+          <span class="pill"><strong id="count">0</strong> amendments in lista</span>
+        </div>
+        <div id="status" class="muted" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Riepilogo (pending)</div>
+        <div id="summary" class="list"></div>
+        <div id="summary-empty" class="muted">Nessuna amendment inserita.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'disposal_amendments_v1';
+
+    const AMENDMENT_OPTIONS = [
+      { id: 'opex_delete', label: 'Opex to be eliminated (ELIMINA riga in Disposal Final)' },
+      { id: 'note_no_price', label: 'no price (scrivi in Notes col R)' },
+      { id: 'note_value_price', label: 'value price (scrivi in Notes col R)' },
+      { id: 'chg_050', label: 'change to 0,50 and install date to 31/03/2019' },
+      { id: 'chg_805', label: 'change to 8,05€ and install date to 01/08/2025' },
+      { id: 'note_custom', label: 'Custom note (scrivi in Notes col R)' },
+    ];
+
+    function nowIso() {
+      const d = new Date();
+      return d.toISOString();
+    }
+
+    function safeStr(v) { return v === null || v === undefined ? '' : String(v).trim(); }
+
+    function normAsset(s) {
+      const v = safeStr(s).toUpperCase().replace(/\s+/g,'');
+      return v;
+    }
+    function isValidAsset(s) {
+      return /^AST\d+$/.test(normAsset(s));
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { items: [], confirmedAt: null, updatedAt: null };
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return { items: [], confirmedAt: null, updatedAt: null };
+        const items = Array.isArray(parsed.items) ? parsed.items : [];
+        return {
+          items: items.map(x => ({
+            assetNumber: safeStr(x.assetNumber),
+            amendmentId: safeStr(x.amendmentId) || 'note_no_price',
+            customNote: safeStr(x.customNote),
+          })),
+          confirmedAt: parsed.confirmedAt || null,
+          updatedAt: parsed.updatedAt || null,
+        };
+      } catch {
+        return { items: [], confirmedAt: null, updatedAt: null };
+      }
+    }
+
+    function saveState(state) {
+      const payload = {
+        items: state.items,
+        confirmedAt: state.confirmedAt || null,
+        updatedAt: nowIso(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      return payload;
+    }
+
+    function makeRow(item, idx) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.dataset.idx = String(idx);
+
+      const asset = document.createElement('input');
+      asset.placeholder = 'Asset Number (es. AST000001428580)';
+      asset.value = item.assetNumber || '';
+
+      const sel = document.createElement('select');
+      AMENDMENT_OPTIONS.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+      sel.value = item.amendmentId || 'note_no_price';
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn danger';
+      remove.textContent = 'Rimuovi';
+
+      const custom = document.createElement('textarea');
+      custom.placeholder = 'Custom note (solo se selezioni "Custom note")';
+      custom.value = item.customNote || '';
+      custom.style.gridColumn = '1 / -1';
+
+      function refreshCustomEnabled() {
+        const enabled = sel.value === 'note_custom';
+        custom.disabled = !enabled;
+        custom.style.opacity = enabled ? '1' : '.55';
+      }
+      refreshCustomEnabled();
+
+      asset.addEventListener('input', () => { state.items[idx].assetNumber = asset.value; renderSummary(); });
+      sel.addEventListener('change', () => { state.items[idx].amendmentId = sel.value; refreshCustomEnabled(); renderSummary(); });
+      custom.addEventListener('input', () => { state.items[idx].customNote = custom.value; renderSummary(); });
+
+      remove.addEventListener('click', () => {
+        state.items.splice(idx, 1);
+        renderAll();
+        setStatus('Riga rimossa (non dimenticare di salvare).');
+      });
+
+      row.appendChild(asset);
+      row.appendChild(sel);
+      row.appendChild(remove);
+      row.appendChild(custom);
+      return row;
+    }
+
+    function visibleItems(items) {
+      return items
+        .map(x => ({
+          assetNumber: normAsset(x.assetNumber),
+          amendmentId: safeStr(x.amendmentId),
+          customNote: safeStr(x.customNote),
+        }))
+        .filter(x => x.assetNumber || x.customNote || x.amendmentId);
+    }
+
+    function renderRows() {
+      const host = document.getElementById('rows');
+      host.innerHTML = '';
+      state.items.forEach((it, idx) => host.appendChild(makeRow(it, idx)));
+      document.getElementById('count').textContent = String(visibleItems(state.items).filter(x => x.assetNumber).length);
+    }
+
+    function labelFor(amendmentId) {
+      const f = AMENDMENT_OPTIONS.find(o => o.id === amendmentId);
+      return f ? f.label : amendmentId;
+    }
+
+    function renderSummary() {
+      const sum = document.getElementById('summary');
+      const empty = document.getElementById('summary-empty');
+      sum.innerHTML = '';
+
+      const items = visibleItems(state.items).filter(x => x.assetNumber);
+      if (!items.length) {
+        empty.style.display = '';
+        return;
+      }
+      empty.style.display = 'none';
+
+      items.forEach(it => {
+        const box = document.createElement('div');
+        box.className = 'item';
+
+        const top = document.createElement('div');
+        top.className = 'item-top';
+        const a = document.createElement('div');
+        a.innerHTML = `<div class="asset"><strong>${it.assetNumber}</strong></div><div class="muted" style="margin-top:6px">${labelFor(it.amendmentId)}</div>`;
+        const v = document.createElement('div');
+        if (!isValidAsset(it.assetNumber)) {
+          v.innerHTML = `<div class="warn">Formato AST non valido</div>`;
+        } else {
+          v.innerHTML = `<div class="ok">OK</div>`;
+        }
+        top.appendChild(a);
+        top.appendChild(v);
+
+        box.appendChild(top);
+        if (it.amendmentId === 'note_custom' && it.customNote) {
+          const n = document.createElement('div');
+          n.className = 'muted';
+          n.style.marginTop = '10px';
+          n.innerHTML = `Custom note: <code>${it.customNote.replace(/</g,'&lt;')}</code>`;
+          box.appendChild(n);
+        }
+        sum.appendChild(box);
+      });
+    }
+
+    function renderAll() {
+      if (!state.items.length) state.items.push({ assetNumber: '', amendmentId: 'note_no_price', customNote: '' });
+      renderRows();
+      renderSummary();
+      setStatus(state.updatedAt ? `Ultimo salvataggio: ${state.updatedAt}${state.confirmedAt ? ' · Confermato: '+state.confirmedAt : ''}` : 'Nessun salvataggio ancora.');
+    }
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    function validateBeforeSave(items) {
+      const cleaned = visibleItems(items)
+        .filter(x => x.assetNumber)
+        .map(x => ({
+          assetNumber: normAsset(x.assetNumber),
+          amendmentId: x.amendmentId || 'note_no_price',
+          customNote: x.amendmentId === 'note_custom' ? safeStr(x.customNote) : '',
+        }));
+
+      const invalid = cleaned.filter(x => !isValidAsset(x.assetNumber));
+      return { cleaned, invalid };
+    }
+
+    function goToFinal() {
+      try {
+        window.parent.postMessage({ type: 'disposal:navigate', target: 'final' }, '*');
+      } catch {}
+    }
+
+    let state = loadState();
+
+    document.getElementById('add-row').addEventListener('click', () => {
+      state.items.push({ assetNumber: '', amendmentId: 'note_no_price', customNote: '' });
+      renderAll();
+    });
+
+    document.getElementById('save').addEventListener('click', () => {
+      const { cleaned, invalid } = validateBeforeSave(state.items);
+      saveState({ ...state, items: cleaned, confirmedAt: null });
+      state = loadState();
+      renderAll();
+      setStatus(invalid.length ? `Salvato con ${invalid.length} Asset Number non validi (correggili).` : 'Salvato.');
+    });
+
+    document.getElementById('clear').addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      state = loadState();
+      renderAll();
+      setStatus('Lista svuotata.');
+    });
+
+    document.getElementById('confirm-go-final').addEventListener('click', () => {
+      const { cleaned, invalid } = validateBeforeSave(state.items);
+      const confirmed = { items: cleaned, confirmedAt: nowIso(), updatedAt: nowIso() };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(confirmed));
+      state = loadState();
+      renderAll();
+      setStatus(invalid.length ? `Confermato, ma attenzione: ${invalid.length} Asset Number non validi.` : 'Confermato. Puoi generare il Disposal Final.');
+      goToFinal();
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
+
