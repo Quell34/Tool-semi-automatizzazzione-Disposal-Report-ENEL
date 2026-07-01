@@ -17,6 +17,7 @@ The tool consists of three main files:
 3. disposal_report_tool_FINALE (1).html – Handles the final processing phase, generating the definitive Disposal report from the Excel file produced during the first phase.
 
 HOW TO USE THE TOOL:
+
 On the landing page that opens when you click the link, you can upload the disposal file on the left and the asset pricing file on the right. You can also select the month to review, if needed. After clicking "Run Automatic Checks," the tool generates the check file along with a summary of the checks performed. You can then review any issues found and download the processed Excel file. Buttons in the top-right corner let you navigate to the tool's other functions.
 The second section covers amendments, where you can enter any changes to specific rows, based on instructions received from ENEL Asset Management.
 In the final section, Final Report, you can upload the file previously generated during the check phase and start the final processing step. Any amendments entered in the second section are automatically incorporated.
